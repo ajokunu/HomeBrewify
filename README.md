@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Homebrewify Logo" width="300">
+</p>
+
 # Homebrewify
 
 **Convert D&D campaign markdown to professional Homebrewery format**

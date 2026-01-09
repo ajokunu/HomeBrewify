@@ -8,6 +8,7 @@
 
 A TypeScript CLI tool that transforms your campaign notes into beautifully formatted D&D sourcebook content using [The Homebrewery](https://homebrewery.naturalcrit.com/).
 
+Listen listen, you find the website The Homebrewery and you think dang this is sick! But! its too annoying to learn their syntax why cant your AI robot friend do this well. Now just generate your D&D campaign and let Homebrewify make it into plausible Markdown that the Homebrewery website can recognize now its done 70% of the work for you! 
 ---
 
 ## Features

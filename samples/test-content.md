@@ -1,18 +1,18 @@
-# Episode 1: The Duplicates
+# Sample Adventure Content
 
-## Location: Bellfairen
+## Location: Ravenwood Village
 
-A small mining town nestled in the foothills of the Blackcap Mountains. The town has seen better days, with many homes abandoned after the mines dried up.
+A quiet farming village at the edge of the forest. The locals are friendly but wary of outsiders.
 
-### The Chateau de Le Brulure
+### The Old Mill
 
-> The ancient chateau looms before you, its weathered stones telling tales of centuries past. Ivy creeps up the walls like grasping fingers reaching for the moonlit sky.
+> The abandoned mill creaks in the wind, its waterwheel long since rotted away. Something moves in the shadows within—or perhaps it's just your imagination.
 
 **Key NPCs:**
-- Deputy Shafor - Town lawkeeper, gruff but fair
-- Sheriff Aurto - Missing for 3 days
+- Captain Elena - Town guard leader, stern but fair
+- Old Thomas - Retired adventurer, knows local legends
 
-### Monster: Shadow Duplicate
+### Monster: Shadow Stalker
 
 *Medium undead, chaotic evil*
 
@@ -22,9 +22,9 @@ Speed: 30 ft.
 
 STR 10 DEX 14 CON 12 INT 8 WIS 10 CHA 6
 
-**Shadow Step.** The duplicate can teleport up to 30 feet to an unoccupied space it can see that is in dim light or darkness.
+**Shadow Step.** The creature can teleport up to 30 feet to an unoccupied space it can see that is in dim light or darkness.
 
-**Mimic Form.** The duplicate can perfectly replicate the appearance of any humanoid it has seen.
+**Sunlight Sensitivity.** While in sunlight, the creature has disadvantage on attack rolls and Wisdom (Perception) checks.
 
 ### Actions
 
@@ -32,15 +32,15 @@ STR 10 DEX 14 CON 12 INT 8 WIS 10 CHA 6
 
 ---
 
-## Magic Item: Fracture Shard
+## Magic Item: Cloak of Shadows
 
-*Wondrous item, legendary (requires attunement)*
+*Wondrous item, rare (requires attunement)*
 
-This crystalline shard pulses with cold energy from the plane of Risia. While attuned to this item, you have resistance to cold damage and can cast the *ray of frost* cantrip at will.
+This dark cloak seems to absorb light around it. While wearing it, you have advantage on Dexterity (Stealth) checks made in dim light or darkness.
 
 ---
 
-#### Frostbite
+## Spell: Frost Lance
 
 *2nd-level evocation*
 
@@ -49,4 +49,4 @@ This crystalline shard pulses with cold energy from the plane of Risia. While at
 - **Components:** V, S
 - **Duration:** Instantaneous
 
-A beam of freezing cold energy streaks toward a creature within range. Make a ranged spell attack. On a hit, the target takes 3d8 cold damage and has its speed reduced by 10 feet until the start of your next turn.
+A beam of freezing energy streaks toward a creature within range. Make a ranged spell attack. On a hit, the target takes 3d8 cold damage and has its speed reduced by 10 feet until the start of your next turn.

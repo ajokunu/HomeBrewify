@@ -1,17 +1,21 @@
-### Shadow Duplicate
+### Forest Troll
 
-*Medium undead, chaotic evil*
+*Large giant, chaotic evil*
 
-AC: 13
-HP: 22 (4d8+4)
+AC: 15 (natural armor)
+HP: 84 (8d10+40)
 Speed: 30 ft.
 
-STR 10 DEX 14 CON 12 INT 8 WIS 10 CHA 6
+STR 18 DEX 13 CON 20 INT 7 WIS 9 CHA 7
 
-**Shadow Step.** The duplicate can teleport up to 30 feet to an unoccupied space it can see that is in dim light or darkness.
+**Keen Smell.** The troll has advantage on Wisdom (Perception) checks that rely on smell.
 
-**Mimic Form.** The duplicate can perfectly replicate the appearance of any humanoid it has seen.
+**Regeneration.** The troll regains 10 hit points at the start of its turn. If the troll takes acid or fire damage, this trait doesn't function at the start of the troll's next turn.
 
 ### Actions
 
-**Claw.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 7 (1d8+3) slashing damage.
+**Multiattack.** The troll makes three attacks: one with its bite and two with its claws.
+
+**Bite.** *Melee Weapon Attack:* +7 to hit, reach 5 ft., one target. *Hit:* 7 (1d6+4) piercing damage.
+
+**Claw.** *Melee Weapon Attack:* +7 to hit, reach 5 ft., one target. *Hit:* 11 (2d6+4) slashing damage.

@@ -1,0 +1,39 @@
+{
+  "name": "homebrewify",
+  "version": "1.0.0",
+  "description": "Convert D&D campaign markdown to Homebrewery format",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "homebrewify": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "dnd",
+    "homebrewery",
+    "markdown",
+    "converter",
+    "rpg"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "clipboardy": "^4.0.0",
+    "commander": "^11.1.0",
+    "glob": "^10.3.10",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

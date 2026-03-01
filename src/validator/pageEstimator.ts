@@ -223,8 +223,8 @@ function findNextGoodBreak(lines: string[], startIdx: number): number {
       return i + 1;
     }
 
-    // Good break before monster/item blocks
-    if (line.includes('{{monster') || line.includes('{{item')) {
+    // Good break before monster blocks or item headers
+    if (line.includes('{{monster') || /^####\s+/.test(line.trim())) {
       return i;
     }
   }

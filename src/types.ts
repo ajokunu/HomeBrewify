@@ -5,12 +5,15 @@ export enum ContentType {
   Monster = 'monster',
   Item = 'item',
   Spell = 'spell',
+  SpellList = 'spellList',
   Location = 'location',
   Chapter = 'chapter',
   ReadAloud = 'readAloud',
+  Quote = 'quote',
   Note = 'note',
   NPC = 'npc',
   Table = 'table',
+  ArtistCredit = 'artistCredit',
   Cover = 'cover',
   PartCover = 'partCover',
   Unknown = 'unknown',
@@ -156,7 +159,7 @@ export interface PageValidationResult {
  * A validation warning (non-fatal issue)
  */
 export interface ValidationWarning {
-  type: 'empty_page' | 'overflow' | 'orphaned_break' | 'unclosed_block' | 'sparse_content';
+  type: 'empty_page' | 'overflow' | 'orphaned_break' | 'unclosed_block' | 'sparse_content' | 'unknown_block';
   message: string;
   line?: number;
   suggestion?: string;
@@ -215,6 +218,18 @@ export interface PartCoverData {
   partNumber: number;
   title: string;
   subtitle?: string;
+  backgroundImage?: string;
+}
+
+/**
+ * Data for generating a back cover page
+ */
+export interface BackCoverData {
+  title?: string;
+  subtitle?: string;
+  description?: string;
+  author?: string;
+  logoUrl?: string;
   backgroundImage?: string;
 }
 

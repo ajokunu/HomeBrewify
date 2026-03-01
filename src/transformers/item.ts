@@ -1,5 +1,19 @@
 import { ItemData } from '../types.js';
 
+// Pre-compiled type detection patterns for performance
+const TYPE_PATTERNS: Array<{ type: string; regex: RegExp }> = [
+  'weapon', 'armor', 'wondrous item', 'ring', 'rod', 'staff', 'wand',
+  'potion', 'scroll', 'amulet', 'cloak', 'boots', 'gloves', 'helm',
+  'shield', 'belt', 'bracers', 'circlet', 'mask', 'tome', 'grimoire',
+  'codex', 'orb',
+].map(t => ({ type: t, regex: new RegExp(`\\b${t}\\b`, 'i') }));
+
+// Pre-compiled weapon property patterns
+const WEAPON_PROPERTY_PATTERNS: Array<{ prop: string; regex: RegExp }> = [
+  'finesse', 'light', 'heavy', 'two-handed', 'versatile',
+  'thrown', 'reach', 'loading', 'ammunition', 'special',
+].map(p => ({ prop: p, regex: new RegExp(`\\b${p}\\b`, 'i') }));
+
 /**
  * Parse magic item from content
  */
@@ -21,37 +35,10 @@ export function parseItem(content: string): ItemData {
     item.rarity = rarityMatch[1].toLowerCase();
   }
 
-  // Extract type - expanded list
-  const typePatterns = [
-    'weapon',
-    'armor',
-    'wondrous item',
-    'ring',
-    'rod',
-    'staff',
-    'wand',
-    'potion',
-    'scroll',
-    'amulet',
-    'cloak',
-    'boots',
-    'gloves',
-    'helm',
-    'shield',
-    'belt',
-    'bracers',
-    'circlet',
-    'mask',
-    'tome',
-    'grimoire',
-    'codex',
-    'orb',
-  ];
-
-  for (const pattern of typePatterns) {
-    const regex = new RegExp(`\\b${pattern}\\b`, 'i');
+  // Extract type using pre-compiled patterns
+  for (const { type, regex } of TYPE_PATTERNS) {
     if (regex.test(content)) {
-      item.type = pattern;
+      item.type = type;
       break;
     }
   }
@@ -123,22 +110,10 @@ export function parseItemExtended(content: string): ExtendedItemData {
     }
   }
 
-  // Parse weapon properties
-  const propertyPatterns = [
-    'finesse',
-    'light',
-    'heavy',
-    'two-handed',
-    'versatile',
-    'thrown',
-    'reach',
-    'loading',
-    'ammunition',
-    'special',
-  ];
+  // Parse weapon properties using pre-compiled patterns
   const foundProperties: string[] = [];
-  for (const prop of propertyPatterns) {
-    if (new RegExp(`\\b${prop}\\b`, 'i').test(content)) {
+  for (const { prop, regex } of WEAPON_PROPERTY_PATTERNS) {
+    if (regex.test(content)) {
       foundProperties.push(prop);
     }
   }
@@ -150,36 +125,27 @@ export function parseItemExtended(content: string): ExtendedItemData {
 }
 
 /**
- * Transform item to Homebrewery format using {{item}} block
+ * Transform item to Homebrewery V3 format.
+ * V3 has no {{item}} block class. Items use a #### heading,
+ * italic metadata, a : separator, and plain description text.
  */
 export function transformItem(data: ItemData): string {
   const lines: string[] = [];
 
-  // Build type line for the block
-  const typeStr = formatItemType(data);
-  const rarityStr = data.rarity ? data.rarity : 'uncommon';
-
-  // Open item block with proper styling
-  lines.push(`{{item`);
-
-  // Item name
+  // Item name as h4
   lines.push(`#### ${data.name}`);
 
-  // Type line (italic)
-  lines.push(`*${typeStr}*`);
+  // Type/rarity/attunement line (italic)
+  lines.push(`*${formatItemType(data)}*`);
 
-  // Separator
-  lines.push('___');
+  // V3 separator (single colon on its own line)
+  lines.push(':');
 
   // Description with proper formatting
   if (data.description) {
-    // Process description to add proper formatting
     const formattedDesc = formatItemDescription(data.description);
     lines.push(formattedDesc);
   }
-
-  // Close item block
-  lines.push('}}');
 
   return lines.join('\n');
 }

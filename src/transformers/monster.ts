@@ -133,13 +133,75 @@ export function parseMonster(content: string): ExtendedMonsterData {
   return monster;
 }
 
+// Pre-compiled stat line regexes to avoid constructing RegExp in hot loops.
+// Anchored to start of line (multiline) to avoid matching inside trait descriptions.
+// Handles both `**Label:** value` and `**Label** value` formats.
+const STAT_LINE_PATTERNS: Record<string, RegExp> = {
+  'Saving Throws?': /^\*{0,2}Saving Throws?\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Skills?': /^\*{0,2}Skills?\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Damage Vulnerabilities': /^\*{0,2}Damage Vulnerabilities\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Damage Resistances?': /^\*{0,2}Damage Resistances?\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Damage Immunit(?:y|ies)': /^\*{0,2}Damage Immunit(?:y|ies)\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Condition Immunit(?:y|ies)': /^\*{0,2}Condition Immunit(?:y|ies)\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Senses': /^\*{0,2}Senses\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+  'Languages?': /^\*{0,2}Languages?\*{0,2}\s*[:=]?\s*\*{0,2}\s*([^\n]+)/im,
+};
+
 /**
  * Parse a stat line (saving throws, skills, etc.)
+ * Uses pre-compiled patterns for performance.
  */
 function parseStatLine(content: string, label: string): string | undefined {
-  const pattern = new RegExp(`\\*{0,2}${label}\\*{0,2}\\s*[:=]?\\s*([^\\n]+)`, 'i');
+  const pattern = STAT_LINE_PATTERNS[label] ||
+    new RegExp(`\\*{0,2}${label}\\*{0,2}\\s*[:=]?\\s*\\*{0,2}\\s*([^\\n]+)`, 'i');
   const match = content.match(pattern);
   return match ? match[1].trim() : undefined;
+}
+
+/**
+ * Extract a section of content between a start header pattern and end header pattern.
+ * Returns the section text (excluding the start header line) or null if not found.
+ */
+function extractSection(content: string, startPattern: RegExp, endPattern: RegExp): string | null {
+  const lines = content.split('\n');
+  let inSection = false;
+  let startIdx = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!inSection && startPattern.test(lines[i])) {
+      inSection = true;
+      startIdx = i + 1;
+      continue;
+    }
+    if (inSection && i > startIdx && endPattern.test(lines[i])) {
+      return lines.slice(startIdx, i).join('\n');
+    }
+  }
+
+  return inSection ? lines.slice(startIdx).join('\n') : null;
+}
+
+/**
+ * Parse bold-name entries (***Name.*** description) from section content.
+ * Line-by-line parsing avoids ReDoS from nested quantifiers.
+ */
+function parseBoldEntries(sectionContent: string): Array<{ name: string; description: string }> {
+  const entries: Array<{ name: string; description: string }> = [];
+  const lines = sectionContent.split('\n');
+  let current: { name: string; description: string } | null = null;
+
+  for (const line of lines) {
+    const boldMatch = line.match(/^\*{2,3}([^*]{1,200})\.\*{2,3}\s*(.*)$/);
+    if (boldMatch) {
+      if (current) entries.push(current);
+      current = { name: boldMatch[1].trim(), description: boldMatch[2].trim() };
+    } else if (current && line.trim() && !line.match(/^#{1,3}\s/)) {
+      current.description += '\n' + line;
+    }
+  }
+  if (current) entries.push(current);
+
+  return entries;
 }
 
 /**
@@ -191,7 +253,8 @@ function parseAbilityScores(content: string): MonsterData['abilities'] {
 }
 
 /**
- * Parse traits (abilities before Actions section)
+ * Parse traits (abilities before Actions section).
+ * Uses line-by-line parsing to avoid ReDoS from nested quantifiers.
  */
 function parseTraits(content: string): MonsterData['traits'] {
   const traits: MonsterData['traits'] = [];
@@ -200,38 +263,59 @@ function parseTraits(content: string): MonsterData['traits'] {
   const actionsIndex = content.search(/#{1,3}\s*Actions/i);
   const searchContent = actionsIndex > 0 ? content.substring(0, actionsIndex) : content;
 
-  // Match bold text followed by description
-  const traitPattern = /\*{2,3}([^*]+)\.\*{2,3}\s*([^\n]+(?:\n(?!\*{2,3}|\#{1,3})[^\n]+)*)/g;
-  let match;
+  // Parse line by line instead of using unbounded multi-line regex
+  const lines = searchContent.split('\n');
+  let currentTrait: { name: string; description: string } | null = null;
 
-  while ((match = traitPattern.exec(searchContent)) !== null) {
-    const name = match[1].trim();
-    const description = match[2].trim();
+  for (const line of lines) {
+    // Match bold trait header: **Name.** or ***Name.***
+    const boldMatch = line.match(/^\*{2,3}([^*]{1,200})\.\*{2,3}\s*(.*)$/);
+    if (boldMatch) {
+      // Save previous trait
+      if (currentTrait) traits.push(currentTrait);
 
-    // Skip if it looks like a stat line
-    if (/^(Armor Class|Hit Points|Speed|Senses|Languages|Challenge|Proficiency|Saving|Skills|Damage|Condition)/i.test(name)) {
-      continue;
+      const name = boldMatch[1].trim();
+
+      // Skip stat lines and spellcasting (handled separately)
+      if (/^(Armor Class|Hit Points|Speed|Senses|Languages|Challenge|Proficiency|Saving|Skills|Damage|Condition)/i.test(name) ||
+          /^(Spellcasting|Innate Spellcasting)/i.test(name)) {
+        currentTrait = null;
+        continue;
+      }
+
+      currentTrait = { name, description: boldMatch[2].trim() };
+    } else if (currentTrait && line.trim() && !line.match(/^#{1,3}\s/)) {
+      // Continuation line for current trait
+      currentTrait.description += '\n' + line;
+    } else if (line.match(/^#{1,3}\s/) || !line.trim()) {
+      // Header or blank line ends current trait
+      if (currentTrait) {
+        traits.push(currentTrait);
+        currentTrait = null;
+      }
     }
-
-    // Skip spellcasting (handled separately)
-    if (/^(Spellcasting|Innate Spellcasting)/i.test(name)) {
-      continue;
-    }
-
-    traits.push({ name, description });
   }
+
+  // Don't forget the last trait
+  if (currentTrait) traits.push(currentTrait);
 
   return traits;
 }
 
 /**
- * Parse spellcasting trait
+ * Parse spellcasting trait.
+ * Uses bounded section parsing to avoid ReDoS from unbounded lazy quantifiers.
  */
 function parseSpellcasting(content: string): SpellcastingData | undefined {
-  const spellcastingMatch = content.match(/\*{2,3}((?:Innate )?Spellcasting)\.\*{2,3}\s*([\s\S]*?)(?=\*{2,3}[^*]+\.\*{2,3}|#{1,3}\s*Actions|$)/i);
-  if (!spellcastingMatch) return undefined;
+  // Find the spellcasting header
+  const headerMatch = content.match(/\*{2,3}((?:Innate )?Spellcasting)\.\*{2,3}/i);
+  if (!headerMatch || headerMatch.index === undefined) return undefined;
 
-  const spellText = spellcastingMatch[2];
+  // Extract bounded text: from after header to next bold trait or section header
+  const startIdx = headerMatch.index + headerMatch[0].length;
+  const remaining = content.substring(startIdx);
+  const endMatch = remaining.match(/\n\*{2,3}[^*\n]{1,200}\.\*{2,3}|\n#{1,3}\s*Actions/i);
+  const spellText = endMatch ? remaining.substring(0, endMatch.index) : remaining;
   const data: SpellcastingData = {
     ability: 'Intelligence',
     saveDC: 13,
@@ -302,46 +386,26 @@ function parseSpellcasting(content: string): SpellcastingData | undefined {
 }
 
 /**
- * Parse actions from Actions section
+ * Parse actions from Actions section.
+ * Uses bounded section extraction and line-by-line parsing.
  */
 function parseActions(content: string): MonsterData['actions'] {
-  const actions: MonsterData['actions'] = [];
+  const sectionContent = extractSection(content, /#{1,3}\s*Actions/i,
+    /#{1,3}\s*(?:Reactions|Legendary|Lair|Regional|Mythic)/i);
+  if (!sectionContent) return [];
 
-  const actionsMatch = content.match(/#{1,3}\s*Actions[\s\S]*?(?=#{1,3}\s*(?:Reactions|Legendary|Lair|Regional|Mythic|$)|$)/i);
-  if (!actionsMatch) return actions;
-
-  const actionsContent = actionsMatch[0];
-  const actionPattern = /\*{2,3}([^*]+)\.\*{2,3}\s*([^\n]+(?:\n(?!\*{2,3}|\#{1,3})[^\n]+)*)/g;
-  let match;
-
-  while ((match = actionPattern.exec(actionsContent)) !== null) {
-    actions.push({
-      name: match[1].trim(),
-      description: match[2].trim(),
-    });
-  }
-
-  return actions;
+  return parseBoldEntries(sectionContent);
 }
 
 /**
  * Parse reactions section
  */
 function parseReactions(content: string): Array<{ name: string; description: string }> | undefined {
-  const reactionsMatch = content.match(/#{1,3}\s*Reactions[\s\S]*?(?=#{1,3}\s*(?:Legendary|Lair|Regional|Mythic|$)|$)/i);
-  if (!reactionsMatch) return undefined;
+  const sectionContent = extractSection(content, /#{1,3}\s*Reactions/i,
+    /#{1,3}\s*(?:Legendary|Lair|Regional|Mythic)/i);
+  if (!sectionContent) return undefined;
 
-  const reactions: Array<{ name: string; description: string }> = [];
-  const reactionPattern = /\*{2,3}([^*]+)\.\*{2,3}\s*([^\n]+(?:\n(?!\*{2,3}|\#{1,3})[^\n]+)*)/g;
-  let match;
-
-  while ((match = reactionPattern.exec(reactionsMatch[0])) !== null) {
-    reactions.push({
-      name: match[1].trim(),
-      description: match[2].trim(),
-    });
-  }
-
+  const reactions = parseBoldEntries(sectionContent);
   return reactions.length > 0 ? reactions : undefined;
 }
 
@@ -349,31 +413,36 @@ function parseReactions(content: string): Array<{ name: string; description: str
  * Parse legendary actions
  */
 function parseLegendaryActions(content: string): { actions: Array<{ name: string; description: string }> | undefined; count: number } {
-  const legendaryMatch = content.match(/#{1,3}\s*Legendary Actions[\s\S]*?(?=#{1,3}\s*(?:Lair|Regional|Mythic|$)|$)/i);
-  if (!legendaryMatch) return { actions: undefined, count: 3 };
-
-  const legendaryContent = legendaryMatch[0];
-  const actions: Array<{ name: string; description: string }> = [];
+  const sectionContent = extractSection(content, /#{1,3}\s*Legendary Actions/i,
+    /#{1,3}\s*(?:Lair|Regional|Mythic)/i);
+  if (!sectionContent) return { actions: undefined, count: 3 };
 
   // Extract action count from intro text
   let count = 3;
-  const countMatch = legendaryContent.match(/can take (\d+) legendary actions/i);
+  const countMatch = sectionContent.match(/can take (\d+) legendary actions/i);
   if (countMatch) {
     count = parseInt(countMatch[1]);
   }
 
-  // Parse legendary action entries
-  const actionPattern = /\*{2,3}([^*]+)(?:\s*\(Costs (\d+) Actions?\))?\.\*{2,3}\s*([^\n]+(?:\n(?!\*{2,3}|\#{1,3})[^\n]+)*)/gi;
-  let match;
+  // Parse entries, handling cost annotations
+  const actions: Array<{ name: string; description: string }> = [];
+  const lines = sectionContent.split('\n');
+  let currentEntry: { name: string; description: string } | null = null;
 
-  while ((match = actionPattern.exec(legendaryContent)) !== null) {
-    const name = match[1].trim();
-    const cost = match[2] ? ` (Costs ${match[2]} Actions)` : '';
-    actions.push({
-      name: name + cost,
-      description: match[3].trim(),
-    });
+  for (const line of lines) {
+    const boldMatch = line.match(/^\*{2,3}([^*]{1,200})(?:\s*\(Costs (\d+) Actions?\))?\.\*{2,3}\s*(.*)$/i);
+    if (boldMatch) {
+      if (currentEntry) actions.push(currentEntry);
+      const name = boldMatch[1].trim();
+      const cost = boldMatch[2] ? ` (Costs ${boldMatch[2]} Actions)` : '';
+      currentEntry = { name: name + cost, description: boldMatch[3].trim() };
+    } else if (currentEntry && line.trim() && !line.match(/^#{1,3}\s/)) {
+      currentEntry.description += '\n' + line;
+    } else if (!line.trim() || line.match(/^#{1,3}\s/)) {
+      // Keep accumulating - blank lines within entry are ok for legendary actions
+    }
   }
+  if (currentEntry) actions.push(currentEntry);
 
   return { actions: actions.length > 0 ? actions : undefined, count };
 }
@@ -382,20 +451,27 @@ function parseLegendaryActions(content: string): { actions: Array<{ name: string
  * Parse mythic actions
  */
 function parseMythicActions(content: string): Array<{ name: string; description: string; cost?: number }> | undefined {
-  const mythicMatch = content.match(/#{1,3}\s*Mythic Actions[\s\S]*?(?=#{1,3}|$)/i);
-  if (!mythicMatch) return undefined;
+  const sectionContent = extractSection(content, /#{1,3}\s*Mythic Actions/i, /#{1,3}/);
+  if (!sectionContent) return undefined;
 
   const actions: Array<{ name: string; description: string; cost?: number }> = [];
-  const actionPattern = /\*{2,3}([^*]+)(?:\s*\(Costs (\d+) Actions?\))?\.\*{2,3}\s*([^\n]+(?:\n(?!\*{2,3}|\#{1,3})[^\n]+)*)/gi;
-  let match;
+  const lines = sectionContent.split('\n');
+  let currentEntry: { name: string; description: string; cost?: number } | null = null;
 
-  while ((match = actionPattern.exec(mythicMatch[0])) !== null) {
-    actions.push({
-      name: match[1].trim(),
-      description: match[3].trim(),
-      cost: match[2] ? parseInt(match[2]) : undefined,
-    });
+  for (const line of lines) {
+    const boldMatch = line.match(/^\*{2,3}([^*]{1,200})(?:\s*\(Costs (\d+) Actions?\))?\.\*{2,3}\s*(.*)$/i);
+    if (boldMatch) {
+      if (currentEntry) actions.push(currentEntry);
+      currentEntry = {
+        name: boldMatch[1].trim(),
+        description: boldMatch[3].trim(),
+        cost: boldMatch[2] ? parseInt(boldMatch[2]) : undefined,
+      };
+    } else if (currentEntry && line.trim() && !line.match(/^#{1,3}\s/)) {
+      currentEntry.description += '\n' + line;
+    }
   }
+  if (currentEntry) actions.push(currentEntry);
 
   return actions.length > 0 ? actions : undefined;
 }
@@ -552,7 +628,11 @@ export function transformMonster(data: ExtendedMonsterData): string {
 
   // Actions
   if (data.actions && data.actions.length > 0) {
-    lines.push('### Actions');
+    // Ensure separator before section header
+    if (lines.length > 0 && lines[lines.length - 1] !== ':' && lines[lines.length - 1] !== '___') {
+      lines.push(':');
+    }
+    lines.push('### Actions {--TOC:exclude}');
     for (const action of data.actions) {
       lines.push(`***${action.name}.*** ${action.description}`);
       lines.push(':');
@@ -562,7 +642,10 @@ export function transformMonster(data: ExtendedMonsterData): string {
 
   // Reactions
   if (data.reactions && data.reactions.length > 0) {
-    lines.push('### Reactions');
+    if (lines.length > 0 && lines[lines.length - 1] !== ':') {
+      lines.push(':');
+    }
+    lines.push('### Reactions {--TOC:exclude}');
     for (const reaction of data.reactions) {
       lines.push(`***${reaction.name}.*** ${reaction.description}`);
       lines.push(':');
@@ -572,7 +655,10 @@ export function transformMonster(data: ExtendedMonsterData): string {
 
   // Legendary Actions
   if (data.legendaryActions && data.legendaryActions.length > 0) {
-    lines.push('### Legendary Actions');
+    if (lines.length > 0 && lines[lines.length - 1] !== ':') {
+      lines.push(':');
+    }
+    lines.push('### Legendary Actions {--TOC:exclude}');
     const count = data.legendaryActionCount || 3;
     lines.push(`The ${data.name.toLowerCase()} can take ${count} legendary actions, choosing from the options below. Only one legendary action option can be used at a time and only at the end of another creature's turn. The ${data.name.toLowerCase()} regains spent legendary actions at the start of its turn.`);
     lines.push(':');
@@ -585,7 +671,10 @@ export function transformMonster(data: ExtendedMonsterData): string {
 
   // Mythic Actions
   if (data.mythicActions && data.mythicActions.length > 0) {
-    lines.push('### Mythic Actions');
+    if (lines.length > 0 && lines[lines.length - 1] !== ':') {
+      lines.push(':');
+    }
+    lines.push('### Mythic Actions {--TOC:exclude}');
     lines.push(`If the ${data.name.toLowerCase()}'s mythic trait is active, it can use the options below as legendary actions.`);
     lines.push(':');
     for (const action of data.mythicActions) {
@@ -603,7 +692,7 @@ export function transformMonster(data: ExtendedMonsterData): string {
   if (data.lairActions && data.lairActions.length > 0) {
     lines.push('');
     lines.push('{{note');
-    lines.push('##### Lair Actions');
+    lines.push('##### Lair Actions {--TOC:exclude}');
     lines.push('');
     lines.push('On initiative count 20 (losing initiative ties), the creature can take a lair action to cause one of the following effects:');
     lines.push('');
@@ -617,7 +706,7 @@ export function transformMonster(data: ExtendedMonsterData): string {
   if (data.regionalEffects && data.regionalEffects.length > 0) {
     lines.push('');
     lines.push('{{note');
-    lines.push('##### Regional Effects');
+    lines.push('##### Regional Effects {--TOC:exclude}');
     lines.push('');
     lines.push(`The region containing the ${data.name.toLowerCase()}'s lair is warped by its presence, creating the following effects:`);
     lines.push('');

@@ -1,6 +1,49 @@
 import { ValidationError, ValidationWarning, AutoFix } from '../types.js';
 
 /**
+ * Known Homebrewery V3 block types.
+ * Multi-line blocks open with {{ and close with }}.
+ * Inline blocks appear as {{type ...}} on a single line.
+ */
+const KNOWN_V3_BLOCKS = {
+  // Multi-line content blocks
+  multiLine: new Set([
+    'frontCover', 'insideCover', 'partCover', 'backCover',
+    'monster', 'classTable', 'spellList',
+    'note', 'descriptive', 'quote', 'wide',
+    'toc', 'index',
+    'artist',
+    'runeTable',
+  ]),
+  // Inline blocks (typically self-closing on one line)
+  inline: new Set([
+    'pageNumber', 'footnote', 'logo', 'banner', 'dropcap',
+    'watermark', 'attribution', 'bonus',
+  ]),
+  // Prefixes for numbered variants (watercolor1-12, imageMaskCenter1-16, etc.)
+  numberedPrefixes: [
+    'watercolor',
+    'imageMaskCenter',
+    'imageMaskEdge',
+    'imageMaskCorner',
+  ],
+};
+
+/**
+ * Check if a block type is a known V3 type.
+ */
+function isKnownBlockType(type: string): boolean {
+  if (KNOWN_V3_BLOCKS.multiLine.has(type)) return true;
+  if (KNOWN_V3_BLOCKS.inline.has(type)) return true;
+  for (const prefix of KNOWN_V3_BLOCKS.numberedPrefixes) {
+    if (type.startsWith(prefix)) return true;
+  }
+  // CSS property blocks like {{text-align:center ...}} are valid
+  if (type.includes('-') || type.includes(':')) return true;
+  return false;
+}
+
+/**
  * Result of block validation
  */
 export interface BlockValidationResult {
@@ -21,7 +64,8 @@ interface BlockPair {
 }
 
 /**
- * Validate all Homebrewery blocks are properly opened and closed
+ * Validate all Homebrewery blocks are properly opened and closed.
+ * Also validates block types against the V3 registry.
  */
 export function validateBlocks(content: string): BlockValidationResult {
   const result: BlockValidationResult = {
@@ -42,6 +86,17 @@ export function validateBlocks(content: string): BlockValidationResult {
     const openers = line.matchAll(/\{\{(\w+)/g);
     for (const match of openers) {
       const blockType = match[1];
+
+      // Warn on unknown block types
+      if (!isKnownBlockType(blockType)) {
+        result.warnings.push({
+          type: 'unknown_block',
+          message: `Unknown block type '{{${blockType}' at line ${lineNum}. May not render in Homebrewery V3.`,
+          line: lineNum,
+          suggestion: 'Check Homebrewery V3 documentation for valid block types',
+        });
+      }
+
       blockStack.push({
         line: lineNum,
         type: blockType,
@@ -55,7 +110,6 @@ export function validateBlocks(content: string): BlockValidationResult {
       if (blockStack.length > 0) {
         blockStack.pop();
       } else {
-        // Unmatched closer
         result.errors.push({
           type: 'mismatched_braces',
           message: `Unmatched closing braces '}}' at line ${lineNum}`,
@@ -75,7 +129,6 @@ export function validateBlocks(content: string): BlockValidationResult {
     });
     result.isValid = false;
 
-    // Generate auto-fix
     result.fixes.push({
       type: 'close_block',
       location: lines.length,
@@ -126,7 +179,7 @@ export function findBlockPairs(content: string): BlockPair[] {
       }
     }
 
-    charIndex += line.length + 1; // +1 for newline
+    charIndex += line.length + 1;
   }
 
   // Add unclosed blocks
@@ -154,13 +207,11 @@ export function fixUnclosedBlocks(content: string): string {
 
   let fixed = content;
 
-  // Sort fixes by location descending to avoid index shifts
   const sortedFixes = validation.fixes
     .filter((f) => f.type === 'close_block')
     .sort((a, b) => b.location - a.location);
 
   for (const fix of sortedFixes) {
-    // Add closing braces at end of content
     fixed = fixed + '\n' + fix.replacement;
   }
 
@@ -168,13 +219,12 @@ export function fixUnclosedBlocks(content: string): string {
 }
 
 /**
- * Check for commonly mismatched block types
+ * Check for commonly mismatched or suspicious block nesting
  */
 export function checkBlockNesting(content: string): ValidationWarning[] {
   const warnings: ValidationWarning[] = [];
   const pairs = findBlockPairs(content);
 
-  // Check for suspicious patterns
   for (const pair of pairs) {
     // Monster blocks should not be nested inside note blocks
     if (pair.type === 'monster') {
@@ -198,6 +248,23 @@ export function checkBlockNesting(content: string): ValidationWarning[] {
           message: `Wide block at line ${pair.openLine} spans only ${lineSpan} lines`,
           line: pair.openLine,
           suggestion: 'Wide blocks are typically used for larger content sections',
+        });
+      }
+    }
+
+    // Image mask blocks should be inside cover blocks
+    if (pair.type.startsWith('imageMask')) {
+      const isInsideCover = pairs.some(p =>
+        p.openLine < pair.openLine &&
+        (p.closeLine === null || p.closeLine > pair.openLine) &&
+        ['frontCover', 'insideCover', 'partCover', 'backCover'].includes(p.type)
+      );
+      if (!isInsideCover) {
+        warnings.push({
+          type: 'unclosed_block',
+          message: `Image mask block at line ${pair.openLine} is not inside a cover block`,
+          line: pair.openLine,
+          suggestion: 'Image masks are typically used inside cover blocks',
         });
       }
     }

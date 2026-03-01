@@ -26,8 +26,8 @@ export function analyzeDocument(content: string): DocumentStructure {
   structure.author = extractAuthor(content);
 
   // Check for existing Homebrewery structures
-  structure.hasCover = /\{\{cover\}\}/i.test(content);
-  structure.hasInsideCover = /\{\{insideCover\}\}/i.test(content);
+  structure.hasCover = /\{\{(?:front)?[Cc]over/i.test(content);
+  structure.hasInsideCover = /\{\{insideCover/i.test(content);
   structure.hasToc = /\{\{toc/i.test(content);
 
   // Parse structure
@@ -93,7 +93,7 @@ export function analyzeDocument(content: string): DocumentStructure {
     if (sectionMatch && currentChapter) {
       const sectionTitle = sectionMatch[1].trim();
       // Skip certain technical headers
-      if (!/^(Actions|Reactions|Legendary|Lair|Regional|Traits)$/i.test(sectionTitle)) {
+      if (!/^(Actions|Reactions|Legendary|Mythic|Lair|Regional|Traits)$/i.test(sectionTitle)) {
         currentChapter.sections.push(sectionTitle);
       }
     }
@@ -119,14 +119,14 @@ function extractTitle(content: string): string | undefined {
   const h1Match = content.match(/^#\s+(.+)$/m);
   if (h1Match) {
     const title = h1Match[1].trim();
-    // Skip if it's a part header
-    if (!/^(Part|Act|Chapter)\s+/i.test(title)) {
+    // Skip if it's a structural header
+    if (!/^(Part|Act|Chapter|Episode)\s+/i.test(title)) {
       return title;
     }
   }
 
-  // Look in cover block
-  const coverMatch = content.match(/\{\{cover\}\}[\s\S]*?#\s+(.+?)(?:\n|$)/);
+  // Look in cover block (V3 uses {{frontCover}})
+  const coverMatch = content.match(/\{\{(?:front)?[Cc]over[\s\S]{0,500}?#\s+(.+?)(?:\n|$)/);
   if (coverMatch) {
     return coverMatch[1].trim();
   }
@@ -254,7 +254,7 @@ export function getDocumentOutline(
       const title = headerMatch[2].trim();
 
       // Skip technical headers
-      if (/^(Actions|Reactions|Legendary|Lair|Regional|Traits)$/i.test(title)) {
+      if (/^(Actions|Reactions|Legendary|Mythic|Lair|Regional|Traits)$/i.test(title)) {
         continue;
       }
 

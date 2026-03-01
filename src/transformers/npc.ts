@@ -1,5 +1,5 @@
 import { NPCData, MonsterData } from '../types.js';
-import { transformMonster } from './monster.js';
+import { convertMonster, transformMonster } from './monster.js';
 
 /**
  * Parse NPC data from markdown content
@@ -194,12 +194,9 @@ export function transformNPCAsStatBlock(data: NPCData): string {
 export function convertNPC(content: string): string {
   const data = parseNPC(content);
 
-  // If NPC has stat block data, use stat block format
+  // If NPC has stat block data, convert as monster stat block
   if (data.hasStatBlock) {
-    // Re-parse to get stats
-    const statsContent = content;
-    // Import monster parser here to avoid circular dependency
-    return content; // Will be handled by monster transformer
+    return convertMonster(content);
   }
 
   return transformNPC(data);

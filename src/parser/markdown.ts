@@ -34,10 +34,33 @@ export function parseMarkdown(content: string): ContentBlock[] {
   });
 }
 
+// Pre-compiled header patterns
+const HEADER_PATTERN = /^(#{1,2})\s+(.+)$/;
+// Also split on ### headers for monsters, NPCs, items, and locations
+const SUBSECTION_SPLIT_PATTERN = /^(###)\s+((?:Monster|NPC|Item|Magic Item|Location|Spell|Area)\s*:.+)$/i;
+
 interface RawBlock {
   header?: string;
   content: string;
   lineNumber: number;
+}
+
+/**
+ * Internal block builder that accumulates lines in an array
+ * to avoid quadratic string concatenation.
+ */
+interface BlockBuilder {
+  header?: string;
+  lines: string[];
+  lineNumber: number;
+}
+
+function finalizeBlock(builder: BlockBuilder): RawBlock {
+  return {
+    header: builder.header,
+    content: builder.lines.join('\n') + '\n',
+    lineNumber: builder.lineNumber,
+  };
 }
 
 /**
@@ -46,34 +69,34 @@ interface RawBlock {
 function splitByHeaders(markdown: string): RawBlock[] {
   const lines = markdown.split('\n');
   const blocks: RawBlock[] = [];
-  let currentBlock: RawBlock | null = null;
+  let currentBuilder: BlockBuilder | null = null;
   let lineNumber = 1;
 
   for (const line of lines) {
-    // Check for major headers (# or ##)
-    const headerMatch = line.match(/^(#{1,2})\s+(.+)$/);
+    // Check for major headers (# or ##) or subsection-split headers (### Monster:, etc.)
+    const headerMatch = line.match(HEADER_PATTERN) || line.match(SUBSECTION_SPLIT_PATTERN);
 
     if (headerMatch) {
       // Save previous block if exists
-      if (currentBlock && currentBlock.content.trim()) {
-        blocks.push(currentBlock);
+      if (currentBuilder && currentBuilder.lines.some(l => l.trim())) {
+        blocks.push(finalizeBlock(currentBuilder));
       }
 
       // Start new block
-      currentBlock = {
+      currentBuilder = {
         header: headerMatch[2],
-        content: line + '\n',
+        lines: [line],
         lineNumber,
       };
     } else {
       // Add to current block or start new one
-      if (!currentBlock) {
-        currentBlock = {
-          content: line + '\n',
+      if (!currentBuilder) {
+        currentBuilder = {
+          lines: [line],
           lineNumber,
         };
       } else {
-        currentBlock.content += line + '\n';
+        currentBuilder.lines.push(line);
       }
     }
 
@@ -81,8 +104,8 @@ function splitByHeaders(markdown: string): RawBlock[] {
   }
 
   // Don't forget the last block
-  if (currentBlock && currentBlock.content.trim()) {
-    blocks.push(currentBlock);
+  if (currentBuilder && currentBuilder.lines.some(l => l.trim())) {
+    blocks.push(finalizeBlock(currentBuilder));
   }
 
   // Post-process: merge small blocks that belong together

@@ -227,8 +227,8 @@ export function buildDocumentStructure(content: string): DocumentStructure {
   }
 
   // Check for existing Homebrewery structures
-  structure.hasCover = /\{\{cover\}\}/i.test(content);
-  structure.hasInsideCover = /\{\{insideCover\}\}/i.test(content);
+  structure.hasCover = /\{\{(?:front)?[Cc]over/i.test(content);
+  structure.hasInsideCover = /\{\{insideCover/i.test(content);
   structure.hasToc = /\{\{toc/i.test(content);
 
   let currentPart = 0;

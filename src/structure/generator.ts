@@ -187,37 +187,8 @@ export function insertDropCaps(content: string): string {
 }
 
 /**
- * Add page numbers
- */
-export function addPageNumbers(content: string): string {
-  // Check if already has page numbers
-  if (content.includes('{{pageNumber')) {
-    return content;
-  }
-
-  const pages = content.split('\\page');
-  const result: string[] = [];
-
-  for (let i = 0; i < pages.length; i++) {
-    let page = pages[i];
-
-    // Skip first page (cover)
-    if (i === 0) {
-      result.push(page);
-      continue;
-    }
-
-    // Add page number at end of page
-    const pageNum = `\n\n{{pageNumber,auto}}\n{{footnote PART ${getRomanNumeral(Math.ceil(i / 5))}}}`;
-    page = page + pageNum;
-    result.push(page);
-  }
-
-  return result.join('\\page');
-}
-
-/**
- * Simple page number (just number, no decoration)
+ * Simple page number using V3 auto-incrementing syntax.
+ * Skips cover, inside cover, part cover, and back cover pages.
  */
 export function addSimplePageNumbers(content: string): string {
   if (content.includes('{{pageNumber')) {
@@ -230,51 +201,18 @@ export function addSimplePageNumbers(content: string): string {
   for (let i = 0; i < pages.length; i++) {
     let page = pages[i];
 
-    if (i > 0) {
-      page = page + `\n\n{{pageNumber ${i + 1}}}`;
+    // Skip cover pages (first page and pages containing cover blocks)
+    const isCover = i === 0 ||
+      /\{\{frontCover/i.test(page) ||
+      /\{\{backCover/i.test(page) ||
+      /\{\{insideCover/i.test(page) ||
+      /\{\{partCover/i.test(page);
+
+    if (!isCover) {
+      page = page + `\n\n{{pageNumber,auto}}`;
     }
 
     result.push(page);
-  }
-
-  return result.join('\\page');
-}
-
-/**
- * Convert to Roman numeral
- */
-function getRomanNumeral(num: number): string {
-  const numerals: Array<[number, string]> = [
-    [10, 'X'],
-    [9, 'IX'],
-    [5, 'V'],
-    [4, 'IV'],
-    [1, 'I'],
-  ];
-
-  let result = '';
-  let remaining = num;
-
-  for (const [value, symbol] of numerals) {
-    while (remaining >= value) {
-      result += symbol;
-      remaining -= value;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Add watermark
- */
-export function addWatermark(content: string, text: string): string {
-  // Add to each page
-  const pages = content.split('\\page');
-  const result: string[] = [];
-
-  for (const page of pages) {
-    result.push(page + `\n\n{{watermark ${text}}}`);
   }
 
   return result.join('\\page');
@@ -315,23 +253,3 @@ export function generateDocumentStructure(content: string, config?: ExtendedConf
   return result;
 }
 
-/**
- * Clean up redundant structural elements
- */
-export function cleanupStructure(content: string): string {
-  let result = content;
-
-  // Remove duplicate page breaks
-  result = result.replace(/\\page\s*\\page/g, '\\page');
-
-  // Remove empty pages (just whitespace between page breaks)
-  result = result.replace(/\\page\s*\\page/g, '\\page');
-
-  // Normalize block spacing
-  result = result.replace(/\}\}\s*\n\s*\n\s*\n+/g, '}}\n\n');
-
-  // Ensure blocks have proper spacing
-  result = result.replace(/\}\}\s*\{\{/g, '}}\n\n{{');
-
-  return result;
-}

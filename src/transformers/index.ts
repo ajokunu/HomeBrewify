@@ -16,8 +16,11 @@ import { convertItem, transformItem as transformItemData, parseItem, isItem } fr
 import { convertSpell, transformSpell as transformSpellData, parseSpell } from './spell.js';
 import { convertNPC, transformNPC, parseNPC, isNPC } from './npc.js';
 import { convertTable, transformTable, parseTable, isTable } from './table.js';
-import { generateCover, generatePartCover, generateInsideCover } from './cover.js';
+import { generateCover, generatePartCover, generateInsideCover, generateBackCover } from './cover.js';
 import { generateTOC, buildDocumentStructure } from './toc.js';
+import { transformQuote } from './quote.js';
+import { transformSpellList } from './spellList.js';
+import { transformArtistCredit } from './artist.js';
 import { validate, validateAndFix, optimize, getValidationReport } from '../validator/index.js';
 import { generateDocumentStructure, insertDropCaps, addSimplePageNumbers } from '../structure/index.js';
 import { analyzeDocument, extractCoverData, detectNeededStructure } from '../structure/analyzer.js';
@@ -65,6 +68,18 @@ export function transformBlock(block: ContentBlock): string {
       result = convertTable(block.rawContent);
       break;
 
+    case ContentType.Quote:
+      result = transformQuote(block.rawContent);
+      break;
+
+    case ContentType.SpellList:
+      result = transformSpellList(block.rawContent);
+      break;
+
+    case ContentType.ArtistCredit:
+      result = transformArtistCredit(block.rawContent);
+      break;
+
     case ContentType.Cover:
     case ContentType.PartCover:
       // Cover types pass through - generated separately
@@ -77,8 +92,8 @@ export function transformBlock(block: ContentBlock): string {
       break;
   }
 
-  // Always convert any remaining blockquotes to descriptive boxes
-  if (!result.includes('{{monster') && !result.includes('{{descriptive')) {
+  // Always convert any remaining blockquotes to descriptive/quote boxes
+  if (!result.includes('{{monster') && !result.includes('{{descriptive') && !result.includes('{{quote')) {
     result = convertAllBlockquotes(result);
   }
 
@@ -231,6 +246,91 @@ export function transformExtended(
 }
 
 /**
+ * Fix nested note blocks by scanning for {{note openers
+ * and restructuring nesting. Stack-based to avoid ReDoS.
+ */
+function fixNestedNoteBlocks(content: string): string {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let noteDepth = 0;
+
+  for (const line of lines) {
+    if (line.trim() === '{{note') {
+      noteDepth++;
+      if (noteDepth > 1) {
+        // Close previous note block before opening nested one
+        result.push('}}');
+        result.push('');
+      }
+      result.push(line);
+    } else if (line.trim() === '}}') {
+      if (noteDepth > 0) {
+        noteDepth--;
+      }
+      result.push(line);
+    } else {
+      result.push(line);
+    }
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Ensure all monster blocks are closed. Scans line-by-line
+ * instead of using unbounded regex.
+ */
+function closeUnclosedMonsterBlocks(content: string): string {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let inMonster = false;
+  let braceDepth = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.includes('{{monster,frame')) {
+      // Close previous unclosed monster block
+      if (inMonster && braceDepth > 0) {
+        result.push('}}');
+      }
+      inMonster = true;
+      braceDepth = 1;
+      result.push(line);
+      continue;
+    }
+
+    if (inMonster) {
+      // Track brace depth within monster block
+      const opens = (line.match(/\{\{/g) || []).length;
+      const closes = (line.match(/\}\}/g) || []).length;
+      braceDepth += opens - closes;
+
+      if (braceDepth <= 0) {
+        inMonster = false;
+        braceDepth = 0;
+      }
+
+      // Check if we hit a boundary that should end the monster block
+      if (inMonster && (line.startsWith('\\page') || line.match(/^# /) || line.startsWith('{{monster,frame'))) {
+        result.push('}}');
+        inMonster = false;
+        braceDepth = 0;
+      }
+    }
+
+    result.push(line);
+  }
+
+  // Close final unclosed monster block
+  if (inMonster && braceDepth > 0) {
+    result.push('}}');
+  }
+
+  return result.join('\n');
+}
+
+/**
  * Post-process the final output to fix common issues
  */
 function postProcess(content: string): string {
@@ -257,14 +357,21 @@ function postProcess(content: string): string {
   // Add page breaks before monster stat blocks (but not if already there)
   result = result.replace(/(?<!\\page\n\n)\n\n(\{\{monster,frame)/g, '\n\n\\page\n\n$1');
 
-  // Fix nested note blocks
-  result = result.replace(
-    /\{\{note\n([\s\S]*?)\{\{note\n([\s\S]*?)\}\}\n([\s\S]*?)\}\}/g,
-    '{{note\n$1}}\n\n{{note\n$2}}\n\n$3'
-  );
+  // Fix nested note blocks using stack-based approach to avoid ReDoS
+  result = fixNestedNoteBlocks(result);
 
-  // Fix double closing braces without content
-  result = result.replace(/\}\}\s*\n\s*\}\}/g, '}}');
+  // Fix double closing braces that are truly redundant.
+  // Only collapse when `}}` is on its own line followed by another `}}` on its own line,
+  // AND the first `}}` line has no opening `{{` (ruling out inline blocks like {{attribution}}).
+  result = result.replace(/^(\}\})\s*\n(\}\})$/gm, (match, first, second, offset) => {
+    // Check if the line with the first }} also has a {{ (inline block like {{attribution ...}})
+    const lineStart = result.lastIndexOf('\n', offset - 1) + 1;
+    const line = result.substring(lineStart, offset + first.length);
+    if (line.includes('{{')) {
+      return match; // Preserve — first }} closes an inline block
+    }
+    return '}}';
+  });
 
   // Ensure proper spacing after }} blocks
   result = result.replace(/\}\}\n([^}\n])/g, '}}\n\n$1');
@@ -290,22 +397,11 @@ function postProcess(content: string): string {
   // Clean up extra blank lines
   result = result.replace(/\n{4,}/g, '\n\n\n');
 
-  // Ensure all monster blocks are closed
-  const monsterOpens = (result.match(/\{\{monster,frame/g) || []).length;
-  if (monsterOpens > 0) {
-    result = result.replace(
-      /(\{\{monster,frame[\s\S]*?)(?=\n\n\{\{|\n\\page|\n# |$)/g,
-      (match) => {
-        if (!match.trim().endsWith('}}')) {
-          return match.trimEnd() + '\n}}';
-        }
-        return match;
-      }
-    );
-  }
+  // Ensure all monster blocks are closed using line-by-line scan
+  result = closeUnclosedMonsterBlocks(result);
 
-  // Remove empty lines before }}
-  result = result.replace(/\n\n+\}\}/g, '\n}}');
+  // Remove excessive blank lines before standalone }} (but keep 1 blank line for readability)
+  result = result.replace(/\n{3,}\}\}/g, '\n\n}}');
 
   return result;
 }
@@ -452,8 +548,12 @@ export { convertItem, parseItem, transformItem, isItem } from './item.js';
 export { convertSpell, parseSpell, transformSpell } from './spell.js';
 export { convertNPC, parseNPC, transformNPC, isNPC } from './npc.js';
 export { convertTable, parseTable, transformTable, isTable } from './table.js';
-export { generateCover, generatePartCover, generateInsideCover } from './cover.js';
+export { generateCover, generatePartCover, generateInsideCover, generateBackCover } from './cover.js';
 export { generateTOC, buildDocumentStructure } from './toc.js';
+export { transformQuote, isQuote } from './quote.js';
+export { transformSpellList, isSpellList } from './spellList.js';
+export { transformArtistCredit, generateArtistCredit, isArtistCredit } from './artist.js';
+export { generateWatercolor, insertWatercolors } from './watercolor.js';
 
 // Re-export validator
 export { validate, validateAndFix, optimize, getValidationReport } from '../validator/index.js';

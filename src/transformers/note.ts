@@ -7,7 +7,7 @@
  * Check if content is a DM note
  */
 export function isNote(content: string): boolean {
-  return /\*?\*?(DM Note|Note|Secret|Hidden|Tip|Warning|Important)\*?\*?\s*[:=]/i.test(content);
+  return /\*{0,2}(DM Note|Note|Secret|Hidden|Tip|Warning|Important)\*{0,2}\s*[:=]/i.test(content);
 }
 
 /**
@@ -15,7 +15,7 @@ export function isNote(content: string): boolean {
  */
 export function extractNoteContent(content: string): { title: string; body: string } {
   // Match note header
-  const headerMatch = content.match(/\*?\*?(DM Note|Note|Secret|Hidden|Tip|Warning|Important)\*?\*?\s*[:=]\s*(.*)/i);
+  const headerMatch = content.match(/\*{0,2}(DM Note|Note|Secret|Hidden|Tip|Warning|Important)\*{0,2}\s*[:=]\s*\*{0,2}\s*(.*)/i);
 
   if (!headerMatch) {
     return { title: 'Note', body: content };

@@ -36,7 +36,27 @@ export function insertCoverPage(content: string, config?: ExtendedConfig): strin
   // Generate cover
   const cover = generateCover(coverData);
 
-  return cover + '\n' + content;
+  // Strip the title block from content to avoid duplication.
+  // Remove the first H1, optional following H2 subtitle, and optional author line.
+  let strippedContent = content;
+
+  // Remove first H1 that matches the extracted title
+  strippedContent = strippedContent.replace(/^#\s+.+\n+/m, '');
+
+  // Remove subtitle H2 if it was used in cover
+  if (coverData.subtitle) {
+    strippedContent = strippedContent.replace(/^##\s+.+\n+/m, '');
+  }
+
+  // Remove author line (e.g. *Written by ...* or *By ...*)
+  if (coverData.author) {
+    strippedContent = strippedContent.replace(/^\*(?:Written by|Created by|By)\s+.+\*\n*/m, '');
+  }
+
+  // Remove leading horizontal rules, blank lines, and page breaks
+  strippedContent = strippedContent.replace(/^(?:\s*---\s*\n|\s*\\page\s*\n|\s*\n)+/, '');
+
+  return cover + '\n' + strippedContent;
 }
 
 /**

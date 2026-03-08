@@ -57,9 +57,9 @@ const patterns = {
 
   note: {
     // DM notes
-    dmNotePattern: /\*?\*?(DM Note|Note|Secret|Hidden)\*?\*?\s*[:=]/i,
+    dmNotePattern: /\*{0,2}(DM Note|Note|Secret|Hidden)\*{0,2}\s*[:=]/i,
     // Tip or warning boxes
-    tipPattern: /\*?\*?(Tip|Warning|Important)\*?\*?\s*[:=]/i,
+    tipPattern: /\*{0,2}(Tip|Warning|Important)\*{0,2}\s*[:=]/i,
   },
 
   npc: {

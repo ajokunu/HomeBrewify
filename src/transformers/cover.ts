@@ -1,7 +1,7 @@
-import { CoverPageData, InsideCoverData, PartCoverData } from '../types.js';
+import { CoverPageData, InsideCoverData, PartCoverData, BackCoverData } from '../types.js';
 
 /**
- * Generate a cover page with Homebrewery formatting
+ * Generate a front cover page using Homebrewery V3 {{frontCover}} syntax.
  */
 export function generateCover(data: CoverPageData): string {
   const lines: string[] = [];
@@ -11,12 +11,15 @@ export function generateCover(data: CoverPageData): string {
   lines.push(`![Cover Image](${bgImage}){position:absolute,top:0,left:0,height:100%,width:100%}`);
   lines.push('');
 
-  // Cover styling block (opened with {{, closed with }} later)
-  lines.push('{{cover');
+  // V3 front cover block
+  lines.push('{{frontCover');
   lines.push('');
 
-  // Title block with centering
-  lines.push('{{title-block,wide');
+  // Logo (standard V3 pattern)
+  lines.push('{{logo}}');
+  lines.push('');
+
+  // Title
   lines.push(`# ${data.title}`);
 
   if (data.subtitle) {
@@ -27,22 +30,22 @@ export function generateCover(data: CoverPageData): string {
     lines.push(`### ${data.level}`);
   }
 
-  lines.push('}}');
+  lines.push('___');
+
+  // Banner decoration
+  lines.push('{{banner HOMEBREW}}');
   lines.push('');
 
-  // Campaign/setting info if provided
-  if (data.campaign) {
-    lines.push(`*${data.campaign}*`);
+  // Footnote with author/campaign info
+  const footnoteParts: string[] = [];
+  if (data.author) footnoteParts.push(`Written by ${data.author}`);
+  if (data.campaign) footnoteParts.push(data.campaign);
+  if (footnoteParts.length > 0) {
+    lines.push(`{{footnote ${footnoteParts.join(' | ')}}}`);
   }
 
+  // Close front cover block
   lines.push('}}');
-  lines.push('');
-
-  // Author credit at bottom
-  if (data.author) {
-    lines.push(`{{footnote Written by ${data.author}}}`);
-  }
-
   lines.push('');
   lines.push('\\page');
 
@@ -50,7 +53,7 @@ export function generateCover(data: CoverPageData): string {
 }
 
 /**
- * Generate an inside cover page (credits/dedication)
+ * Generate an inside cover page (credits/dedication) using V3 {{insideCover}} syntax.
  */
 export function generateInsideCover(data: InsideCoverData): string {
   const lines: string[] = [];
@@ -58,10 +61,9 @@ export function generateInsideCover(data: InsideCoverData): string {
   lines.push('{{insideCover');
   lines.push('');
 
+  // Dedication as styled italic text (V3 has no {{dedication}} class)
   if (data.dedication) {
-    lines.push('{{dedication');
     lines.push(`*${data.dedication}*`);
-    lines.push('}}');
     lines.push('');
   }
 
@@ -89,7 +91,7 @@ export function generateInsideCover(data: InsideCoverData): string {
 }
 
 /**
- * Generate a part cover page (chapter divider)
+ * Generate a part cover page (chapter divider) using V3 {{partCover}} + {{imageMaskEdge}} syntax.
  */
 export function generatePartCover(data: PartCoverData): string {
   const lines: string[] = [];
@@ -97,15 +99,18 @@ export function generatePartCover(data: PartCoverData): string {
   lines.push('\\page');
   lines.push('');
 
-  // Background image for part cover
-  const bgImage = data.backgroundImage || 'placeholder.jpg';
-  lines.push(`![Part Cover](${bgImage}){position:absolute,top:0,left:0,height:100%,width:100%}`);
-  lines.push('');
-
+  // V3 part cover block
   lines.push('{{partCover');
   lines.push('');
 
-  // Part number formatting
+  // Image mask for decorative background (V3 pattern)
+  const bgImage = data.backgroundImage || 'placeholder.jpg';
+  lines.push('{{imageMaskEdge2,--pointed:pointed}}');
+  lines.push(`![Part Cover](${bgImage}){position:absolute,top:0,left:0,height:100%}`);
+  lines.push('{{}}');
+  lines.push('');
+
+  // Part number and title
   const partWord = getPartWord(data.partNumber);
   lines.push(`# Part ${partWord}`);
   lines.push(`## ${data.title}`);
@@ -123,6 +128,63 @@ export function generatePartCover(data: PartCoverData): string {
 }
 
 /**
+ * Generate a back cover page using V3 {{backCover}} syntax.
+ */
+export function generateBackCover(data: BackCoverData): string {
+  const lines: string[] = [];
+
+  lines.push('\\page');
+  lines.push('');
+
+  // Background image
+  if (data.backgroundImage) {
+    lines.push(`![Back Cover](${data.backgroundImage}){position:absolute,top:0,left:0,height:100%,width:100%}`);
+    lines.push('');
+  }
+
+  // V3 back cover block
+  lines.push('{{backCover');
+  lines.push('');
+
+  // Subtitle/tagline
+  if (data.subtitle) {
+    lines.push(`# ${data.subtitle}`);
+    lines.push('');
+  }
+
+  // Description/blurb
+  if (data.description) {
+    lines.push(data.description);
+    lines.push('');
+    lines.push(':');
+    lines.push('');
+  }
+
+  // Divider
+  lines.push('___');
+  lines.push('');
+
+  // Footer info
+  if (data.title || data.author) {
+    const footParts = [data.title, data.author ? `Written by ${data.author}` : ''].filter(Boolean);
+    lines.push(footParts.join(' | '));
+    lines.push('');
+  }
+
+  // Logo
+  if (data.logoUrl) {
+    lines.push(`{{logo ![](${data.logoUrl})}}`);
+  } else {
+    lines.push('{{logo}}');
+  }
+
+  lines.push('');
+  lines.push('}}');
+
+  return lines.join('\n');
+}
+
+/**
  * Convert part number to word (1 -> "One", 2 -> "Two", etc.)
  */
 function getPartWord(num: number): string {
@@ -130,91 +192,4 @@ function getPartWord(num: number): string {
   return words[num] || num.toString();
 }
 
-/**
- * Extract cover data from document content
- */
-export function extractCoverData(content: string): CoverPageData | null {
-  const lines = content.split('\n');
-
-  // Look for title in first # header
-  const titleMatch = content.match(/^#\s+(.+)$/m);
-  if (!titleMatch) return null;
-
-  const data: CoverPageData = {
-    title: titleMatch[1].trim(),
-  };
-
-  // Look for subtitle (## header after title)
-  const subtitleMatch = content.match(/^##\s+(.+)$/m);
-  if (subtitleMatch) {
-    data.subtitle = subtitleMatch[1].trim();
-  }
-
-  // Look for level info (e.g., "A Level 7-9 Adventure")
-  // Only add if subtitle doesn't already contain level info
-  if (!data.subtitle || !data.subtitle.toLowerCase().includes('level')) {
-    const levelMatch = content.match(/(?:Level|Levels?)\s+(\d+(?:-\d+)?)/i);
-    if (levelMatch) {
-      data.level = `A Level ${levelMatch[1]} Adventure`;
-    }
-  }
-
-  // Look for setting (Eberron, Forgotten Realms, etc.)
-  const settingPatterns = ['Eberron', 'Forgotten Realms', 'Ravenloft', 'Greyhawk', 'Dragonlance'];
-  for (const setting of settingPatterns) {
-    if (content.toLowerCase().includes(setting.toLowerCase())) {
-      data.campaign = setting;
-      break;
-    }
-  }
-
-  return data;
-}
-
-/**
- * Detect part breaks in content
- */
-export function detectPartBreaks(content: string): PartCoverData[] {
-  const parts: PartCoverData[] = [];
-  const partPattern = /^#\s+(?:Part|Chapter|Act)\s+(\d+|[IVX]+)(?::\s*|\s+)(.+)$/gim;
-
-  let match;
-  while ((match = partPattern.exec(content)) !== null) {
-    const partNum = parsePartNumber(match[1]);
-    parts.push({
-      partNumber: partNum,
-      title: match[2].trim(),
-    });
-  }
-
-  return parts;
-}
-
-/**
- * Parse part number from string (handles "1", "I", "One", etc.)
- */
-function parsePartNumber(str: string): number {
-  // Try numeric
-  const num = parseInt(str, 10);
-  if (!isNaN(num)) return num;
-
-  // Try roman numerals
-  const romanMap: Record<string, number> = {
-    'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
-    'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10,
-  };
-  if (romanMap[str.toUpperCase()]) {
-    return romanMap[str.toUpperCase()];
-  }
-
-  // Try words
-  const wordMap: Record<string, number> = {
-    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
-  };
-  if (wordMap[str.toLowerCase()]) {
-    return wordMap[str.toLowerCase()];
-  }
-
-  return 1;
-}
+// Note: extractCoverData and detectPartBreaks are in structure/analyzer.ts

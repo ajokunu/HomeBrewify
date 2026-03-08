@@ -57,9 +57,9 @@ const patterns = {
 
   note: {
     // DM notes
-    dmNotePattern: /\*?\*?(DM Note|Note|Secret|Hidden)\*?\*?\s*[:=]/i,
+    dmNotePattern: /\*{0,2}(DM Note|Note|Secret|Hidden)\*{0,2}\s*[:=]/i,
     // Tip or warning boxes
-    tipPattern: /\*?\*?(Tip|Warning|Important)\*?\*?\s*[:=]/i,
+    tipPattern: /\*{0,2}(Tip|Warning|Important)\*{0,2}\s*[:=]/i,
   },
 
   npc: {
@@ -83,6 +83,11 @@ export function detectContentType(text: string): ContentType {
   // Check for monster (most specific - needs AC, HP, and abilities)
   if (isMonster(text)) {
     return ContentType.Monster;
+  }
+
+  // Check for spell list (must come before single spell check)
+  if (isSpellList(text)) {
+    return ContentType.SpellList;
   }
 
   // Check for spell (has casting time, range, components, duration)
@@ -115,7 +120,17 @@ export function detectContentType(text: string): ContentType {
     return ContentType.Note;
   }
 
-  // Check for read-aloud text (blockquotes)
+  // Check for artist credit (short blocks with "Art by" etc.)
+  if (isArtistCredit(text)) {
+    return ContentType.ArtistCredit;
+  }
+
+  // Check for attributed quotes (before generic read-aloud)
+  if (isQuote(text)) {
+    return ContentType.Quote;
+  }
+
+  // Check for read-aloud text (blockquotes without attribution)
   if (isReadAloud(text)) {
     return ContentType.ReadAloud;
   }
@@ -234,6 +249,33 @@ function isTable(text: string): boolean {
     patterns.table.tablePattern.test(text) &&
     patterns.table.headerRowPattern.test(text)
   );
+}
+
+/**
+ * Check if content is a spell list (multiple level headers + spell items)
+ */
+function isSpellList(text: string): boolean {
+  const levelHeaders = text.match(/^#{1,5}\s*(Cantrips?(?:\s*\(0 Level\))?|\d+(?:st|nd|rd|th)\s+Level)/gim) || [];
+  const spellItems = text.match(/^[-*]\s+\w+/gm) || [];
+  return levelHeaders.length >= 2 && spellItems.length >= 3;
+}
+
+/**
+ * Check if content is a blockquote with attribution (for {{quote}} blocks)
+ */
+function isQuote(text: string): boolean {
+  const hasBlockquote = patterns.readAloud.blockquotePattern.test(text);
+  if (!hasBlockquote) return false;
+  // Attribution patterns: — Author, -- Author, - Author (capitalized)
+  return /^>\s*[-—–]{1,2}\s*[A-Z]/m.test(text);
+}
+
+/**
+ * Check if content is an artist credit
+ */
+function isArtistCredit(text: string): boolean {
+  return /\b(?:Art|Illustration|Image|Artwork)\s+(?:by|:)\s+.+/i.test(text) &&
+    text.trim().split('\n').length <= 3;
 }
 
 /**

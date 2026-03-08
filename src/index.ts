@@ -5,8 +5,10 @@
  */
 
 import { Command } from 'commander';
-import { readFileSync, writeFileSync, existsSync, statSync, readdirSync } from 'fs';
-import { join, basename, extname } from 'path';
+import { readFileSync, writeFileSync, existsSync, statSync, readdirSync, mkdirSync } from 'fs';
+import { join, basename, extname, resolve } from 'path';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB limit to prevent DoS
 import chalk from 'chalk';
 import { parseMarkdown } from './parser/markdown.js';
 import {
@@ -51,7 +53,7 @@ program
   .option('-v, --verbose', 'Show detailed output')
   .action(async (input: string, options) => {
     try {
-      const inputPath = input;
+      const inputPath = resolve(input);
 
       if (!existsSync(inputPath)) {
         console.error(chalk.red(`Error: Input path does not exist: ${inputPath}`));
@@ -61,6 +63,19 @@ program
       const stats = statSync(inputPath);
 
       if (stats.isFile()) {
+        // Validate file extension
+        const ext = extname(inputPath).toLowerCase();
+        if (ext !== '.md' && ext !== '.markdown' && ext !== '.txt') {
+          console.error(chalk.red(`Error: Expected a markdown file (.md, .markdown, .txt), got "${ext}"`));
+          process.exit(1);
+        }
+
+        // Validate file size
+        if (stats.size > MAX_FILE_SIZE) {
+          console.error(chalk.red(`Error: File is too large (${(stats.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_FILE_SIZE / 1024 / 1024} MB.`));
+          process.exit(1);
+        }
+
         // Single file conversion
         const result = convertFileExtended(inputPath, options);
 
@@ -97,12 +112,25 @@ program
 
         console.log(chalk.blue(`Found ${files.length} markdown files`));
 
+        // Ensure output directory exists
+        if (options.output) {
+          mkdirSync(resolve(options.output), { recursive: true });
+        }
+
         for (const file of files) {
           const filePath = join(inputPath, file);
+
+          // Skip oversized files in directory mode
+          const fileStats = statSync(filePath);
+          if (fileStats.size > MAX_FILE_SIZE) {
+            console.error(chalk.yellow(`Skipping ${file}: too large (${(fileStats.size / 1024 / 1024).toFixed(1)} MB)`));
+            continue;
+          }
+
           const result = convertFileExtended(filePath, options);
 
           if (options.output) {
-            const outputPath = join(options.output, file.replace('.md', '-hb.md'));
+            const outputPath = join(resolve(options.output), file.replace('.md', '-hb.md'));
             writeFileSync(outputPath, result.content);
             console.log(chalk.green(`Converted: ${file}`));
           } else {
@@ -128,12 +156,19 @@ program
   .option('-o, --output <path>', 'Output fixed file (requires --fix)')
   .action(async (input: string, options) => {
     try {
-      if (!existsSync(input)) {
-        console.error(chalk.red(`Error: File does not exist: ${input}`));
+      const inputPath = resolve(input);
+      if (!existsSync(inputPath)) {
+        console.error(chalk.red(`Error: File does not exist: ${inputPath}`));
         process.exit(1);
       }
 
-      const content = readFileSync(input, 'utf-8');
+      const stats = statSync(inputPath);
+      if (stats.size > MAX_FILE_SIZE) {
+        console.error(chalk.red(`Error: File is too large (${(stats.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_FILE_SIZE / 1024 / 1024} MB.`));
+        process.exit(1);
+      }
+
+      const content = readFileSync(inputPath, 'utf-8');
 
       if (options.fix) {
         const { content: fixed, result } = validateAndFix(content);
@@ -262,12 +297,12 @@ program
       ac: options.ac || '10',
       hp: options.hp || '10 (2d8+1)',
       speed: options.speed || '30 ft.',
-      str: parseInt(options.str),
-      dex: parseInt(options.dex),
-      con: parseInt(options.con),
-      int: parseInt(options.int),
-      wis: parseInt(options.wis),
-      cha: parseInt(options.cha),
+      str: parseIntSafe(options.str, 'str'),
+      dex: parseIntSafe(options.dex, 'dex'),
+      con: parseIntSafe(options.con, 'con'),
+      int: parseIntSafe(options.int, 'int'),
+      wis: parseIntSafe(options.wis, 'wis'),
+      cha: parseIntSafe(options.cha, 'cha'),
     });
 
     if (options.clipboard) {
@@ -325,7 +360,7 @@ program
   .option('-c, --clipboard', 'Copy output to clipboard')
   .action(async (name: string, options) => {
     const result = generateSpell(name, {
-      level: parseInt(options.level),
+      level: parseIntSafe(options.level, 'level'),
       school: options.school || 'evocation',
       castingTime: options.time,
       range: options.range,
@@ -354,21 +389,15 @@ interface ConvertResult {
 }
 
 /**
- * Convert a single file (basic)
+ * Parse an integer from CLI arg, falling back to 10 if invalid.
  */
-function convertFile(filePath: string): string {
-  const content = readFileSync(filePath, 'utf-8');
-  const blocks = parseMarkdown(content);
-  const { homebreweryMarkdown, warnings } = transform(blocks);
-
-  if (warnings.length > 0) {
-    console.error(chalk.yellow('Warnings:'));
-    for (const warning of warnings) {
-      console.error(chalk.yellow(`  - ${warning}`));
-    }
+function parseIntSafe(value: string, name: string): number {
+  const n = parseInt(value, 10);
+  if (isNaN(n)) {
+    console.error(chalk.yellow(`Warning: --${name} must be a number, got "${value}". Using default 10.`));
+    return 10;
   }
-
-  return homebreweryMarkdown;
+  return n;
 }
 
 /**

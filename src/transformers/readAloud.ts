@@ -1,7 +1,10 @@
 /**
- * Transform read-aloud/descriptive text to Homebrewery format
- * Converts blockquotes to {{descriptive}} boxes
+ * Transform read-aloud/descriptive text to Homebrewery format.
+ * Converts blockquotes to {{descriptive}} boxes.
+ * Blockquotes with attribution go to {{quote}} blocks instead (see quote.ts).
  */
+
+import { transformQuote, isQuote } from './quote.js';
 
 /**
  * Extract text from blockquotes
@@ -41,13 +44,20 @@ export function transformReadAloud(content: string): string {
 }
 
 /**
- * Convert all blockquotes in content to descriptive boxes
+ * Convert all blockquotes in content to appropriate V3 blocks.
+ * Blockquotes with attribution (— Author) become {{quote}} blocks.
+ * Others become {{descriptive}} boxes.
  */
 export function convertAllBlockquotes(content: string): string {
-  // Find all blockquote sections
   const blockquoteRegex = /((?:^>.*\n?)+)/gm;
 
   return content.replace(blockquoteRegex, (match) => {
+    // Check for attribution pattern → use {{quote}} block
+    if (isQuote(match)) {
+      return transformQuote(match) + '\n';
+    }
+
+    // Default: {{descriptive}} block
     const text = extractReadAloudText(match);
     return `{{descriptive\n${text}\n}}\n`;
   });

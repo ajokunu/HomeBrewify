@@ -29,26 +29,26 @@ export function parseSpell(content: string): SpellData {
     spell.school = cantripMatch[1].toLowerCase();
   }
 
-  // Extract casting time
-  const castingMatch = content.match(/\*?\*?Casting Time\*?\*?\s*[:=]\s*(.+)/i);
+  // Extract casting time (supports : = and :: separators, strips trailing bold markers)
+  const castingMatch = content.match(/\*?\*?Casting Time\*?\*?\s*(?:::|\s*[:=])\s*\*{0,2}\s*(.+)/i);
   if (castingMatch) {
     spell.castingTime = castingMatch[1].trim();
   }
 
   // Extract range
-  const rangeMatch = content.match(/\*?\*?Range\*?\*?\s*[:=]\s*(.+)/i);
+  const rangeMatch = content.match(/\*?\*?Range\*?\*?\s*(?:::|\s*[:=])\s*\*{0,2}\s*(.+)/i);
   if (rangeMatch) {
     spell.range = rangeMatch[1].trim();
   }
 
   // Extract components
-  const componentsMatch = content.match(/\*?\*?Components?\*?\*?\s*[:=]\s*(.+)/i);
+  const componentsMatch = content.match(/\*?\*?Components?\*?\*?\s*(?:::|\s*[:=])\s*\*{0,2}\s*(.+)/i);
   if (componentsMatch) {
     spell.components = componentsMatch[1].trim();
   }
 
   // Extract duration
-  const durationMatch = content.match(/\*?\*?Duration\*?\*?\s*[:=]\s*(.+)/i);
+  const durationMatch = content.match(/\*?\*?Duration\*?\*?\s*(?:::|\s*[:=])\s*\*{0,2}\s*(.+)/i);
   if (durationMatch) {
     spell.duration = durationMatch[1].trim();
   }
@@ -110,18 +110,18 @@ export function transformSpell(data: SpellData): string {
   // Separator
   lines.push('___');
 
-  // Spell stats as list
+  // Spell stats using V3 definition list syntax
   if (data.castingTime) {
-    lines.push(`- **Casting Time:** ${data.castingTime}`);
+    lines.push(`**Casting Time** :: ${data.castingTime}`);
   }
   if (data.range) {
-    lines.push(`- **Range:** ${data.range}`);
+    lines.push(`**Range** :: ${data.range}`);
   }
   if (data.components) {
-    lines.push(`- **Components:** ${data.components}`);
+    lines.push(`**Components** :: ${data.components}`);
   }
   if (data.duration) {
-    lines.push(`- **Duration:** ${data.duration}`);
+    lines.push(`**Duration** :: ${data.duration}`);
   }
 
   lines.push('');

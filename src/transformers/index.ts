@@ -312,7 +312,7 @@ function closeUnclosedMonsterBlocks(content: string): string {
       }
 
       // Check if we hit a boundary that should end the monster block
-      if (inMonster && (line.startsWith('\\page') || line.match(/^# /) || line.startsWith('{{monster,frame'))) {
+      if (inMonster && (line.startsWith('\\page') || line.match(/^# /))) {
         result.push('}}');
         inMonster = false;
         braceDepth = 0;
@@ -390,7 +390,7 @@ function postProcess(content: string): string {
 
   // Convert remaining blockquotes
   result = result.replace(/((?:^|\n)>.*(?:\n>.*)*)/g, (match) => {
-    const text = match.replace(/\n?>/g, '').trim();
+    const text = match.split('\n').map(l => l.replace(/^>\s?/, '')).join('\n').trim();
     return `\n{{descriptive\n${text}\n}}`;
   });
 

@@ -154,7 +154,8 @@ function extractAuthor(content: string): string | undefined {
   for (const pattern of authorPatterns) {
     const match = content.match(pattern);
     if (match) {
-      return match[1].trim();
+      // Strip markdown formatting (italic * markers)
+      return match[1].trim().replace(/^\*+|\*+$/g, '');
     }
   }
 

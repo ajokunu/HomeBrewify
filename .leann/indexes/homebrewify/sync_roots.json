@@ -1,0 +1,13 @@
+{
+  "roots": [
+    "/mnt/c/Users/alindahl/Code/homebrewify"
+  ],
+  "include_extensions": [
+    ".ts",
+    ".json",
+    ".md"
+  ],
+  "ignore_patterns": [
+    "**/.*"
+  ]
+}
